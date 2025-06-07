@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "src/index.ts",
   "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -15,5 +18,11 @@
     "url": "https://github.com/KOU050223/Discord-Remind-Bot/issues"
   },
   "homepage": "https://github.com/KOU050223/Discord-Remind-Bot#readme",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "@hono/node-server": "^1.14.4",
+    "discord.js": "^14.14.1",
+    "hono": "^4.7.11",
+    "tsx": "^4.7.0"
+  }
 }
