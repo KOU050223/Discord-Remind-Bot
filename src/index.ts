@@ -1,15 +1,15 @@
 import { serve } from "@hono/node-server";
 import healthCheckServer from "./server";
 import { startHealthCheckCron } from "./cron";
-import { Client, GatewayIntentBits, TextChannel, ThreadChannel } from "discord.js";
+import { Client, GatewayIntentBits, TextChannel, ThreadChannel, REST, Routes, SlashCommandBuilder, Interaction } from "discord.js";
 import cron, { ScheduledTask } from "node-cron";
 import dotenv from "dotenv";
 dotenv.config();
 
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN || ""; 
 const THREAD_ID = process.env.THREAD_ID || "";
-const NOTIFY_MESSAGE = process.env.NOTIFY_MESSAGE || "定期通知です！";
-const CRON_SCHEDULE = process.env.CRON_SCHEDULE || "0 0 * * *"; // .envにCRON_SCHEDULE=xxxを記載（デフォルトは毎日0時）
+let NOTIFY_MESSAGE = process.env.NOTIFY_MESSAGE || "定期通知です！";
+const CRON_SCHEDULE = process.env.CRON_SCHEDULE || "0 0 * * *";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
@@ -40,18 +40,71 @@ client.once("ready", () => {
   setSchedule(CRON_SCHEDULE);
 });
 
-client.on("messageCreate", async (message) => {
-  if (!message.content.startsWith("/set-schedule") || message.author.bot) return;
-  const args = message.content.replace("/set-schedule", "").trim();
-  if (!args) {
-    message.reply("cron式を指定してください 例: /set-schedule 0 0 */2 * *");
-    return;
-  }
-  try {
-    setSchedule(args);
-    message.reply(`新しいスケジュールで通知を設定しました: ${args}`);
-  } catch (e) {
-    message.reply("スケジュールの設定に失敗しました。cron式を確認してください。");
+// スラッシュコマンドの登録
+const commands = [
+  new SlashCommandBuilder()
+    .setName("set-schedule")
+    .setDescription("通知のcronスケジュールを設定します")
+    .addStringOption(option =>
+      option.setName("cron")
+        .setDescription("cron式 例: 0 0 */2 * *")
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Botの応答テスト用コマンド"),
+  new SlashCommandBuilder()
+    .setName("change-message")
+    .setDescription("通知メッセージを変更します")
+    .addStringOption(option =>
+      option.setName("message")
+        .setDescription("新しい通知メッセージ")
+        .setRequired(true)
+    ),
+].map(cmd => cmd.toJSON());
+
+if (DISCORD_TOKEN && process.env.APPLICATION_ID && process.env.DISCORD_GUILD_ID) {
+  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+  (async () => {
+    try {
+      await rest.put(
+        Routes.applicationGuildCommands(
+          process.env.APPLICATION_ID as string,
+          process.env.DISCORD_GUILD_ID as string
+        ),
+        { body: commands }
+      );
+      console.log("スラッシュコマンドを登録しました");
+    } catch (error) {
+      console.error("スラッシュコマンド登録エラー", error);
+    }
+  })();
+}
+
+client.on("interactionCreate", async (interaction: Interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === "set-schedule") {
+    const cronExpr = interaction.options.getString("cron");
+    if (!cronExpr) {
+      await interaction.reply({ content: "cron式を指定してください", ephemeral: true });
+      return;
+    }
+    try {
+      setSchedule(cronExpr);
+      await interaction.reply({ content: `新しいスケジュールで通知を設定しました: ${cronExpr}` });
+    } catch (e) {
+      await interaction.reply({ content: "スケジュールの設定に失敗しました。cron式を確認してください。", ephemeral: true });
+    }
+  } else if (interaction.commandName === "ping") {
+    await interaction.reply({ content: "Pong!", ephemeral: true });
+  } else if (interaction.commandName === "change-message") {
+    const newMsg = interaction.options.getString("message");
+    if (!newMsg) {
+      await interaction.reply({ content: "新しい通知メッセージを入力してください", ephemeral: true });
+      return;
+    }
+    NOTIFY_MESSAGE = newMsg;
+    await interaction.reply({ content: `通知メッセージを変更しました: ${newMsg}` });
   }
 });
 
