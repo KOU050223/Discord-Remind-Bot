@@ -15,21 +15,26 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 
 let currentCronJob: ScheduledTask | null = null;
 
+// 通知先スレッドIDのリスト
+let threadIds: string[] = THREAD_ID ? [THREAD_ID] : [];
+
 function setSchedule(cronExpr: string) {
   if (currentCronJob) {
     currentCronJob.stop();
   }
   currentCronJob = cron.schedule(cronExpr, async () => {
-    try {
-      const thread = await client.channels.fetch(THREAD_ID);
-      if (thread && (thread.isThread() || thread.isTextBased())) {
-        (thread as ThreadChannel | TextChannel).send(NOTIFY_MESSAGE);
-        console.log("通知を送信しました");
-      } else {
-        console.error("スレッドが見つかりません");
+    for (const tid of threadIds) {
+      try {
+        const thread = await client.channels.fetch(tid);
+        if (thread && (thread.isThread() || thread.isTextBased())) {
+          (thread as ThreadChannel | TextChannel).send(NOTIFY_MESSAGE);
+          console.log(`通知を送信しました: ${tid}`);
+        } else {
+          console.error(`スレッドが見つかりません: ${tid}`);
+        }
+      } catch (err) {
+        console.error(`スレッド取得・送信エラー (${tid})`, err);
       }
-    } catch (err) {
-      console.error("スレッド取得・送信エラー", err);
     }
   }, {
     timezone: "Asia/Tokyo"
@@ -53,14 +58,27 @@ const commands = [
         .setRequired(true)
     ),
   new SlashCommandBuilder()
-    .setName("ping")
-    .setDescription("Botの応答テスト用コマンド"),
-  new SlashCommandBuilder()
     .setName("change-message")
     .setDescription("通知メッセージを変更します")
     .addStringOption(option =>
       option.setName("message")
         .setDescription("新しい通知メッセージ")
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName("add-thread")
+    .setDescription("通知先スレッドを追加します")
+    .addStringOption(option =>
+      option.setName("thread_id")
+        .setDescription("追加するスレッドID")
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName("delete-thread")
+    .setDescription("通知先スレッドを削除します")
+    .addStringOption(option =>
+      option.setName("thread_id")
+        .setDescription("削除するスレッドID")
         .setRequired(true)
     ),
 ].map(cmd => cmd.toJSON());
@@ -97,8 +115,6 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     } catch (e) {
       await interaction.reply({ content: "スケジュールの設定に失敗しました。cron式を確認してください。", ephemeral: true });
     }
-  } else if (interaction.commandName === "ping") {
-    await interaction.reply({ content: "Pong!", ephemeral: true });
   } else if (interaction.commandName === "change-message") {
     const newMsg = interaction.options.getString("message");
     if (!newMsg) {
@@ -107,6 +123,30 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     }
     NOTIFY_MESSAGE = newMsg;
     await interaction.reply({ content: `通知メッセージを変更しました: ${newMsg}` });
+  } else if (interaction.commandName === "add-thread") {
+    const newThreadId = interaction.options.getString("thread_id");
+    if (!newThreadId) {
+      await interaction.reply({ content: "スレッドIDを入力してください", ephemeral: true });
+      return;
+    }
+    if (threadIds.includes(newThreadId)) {
+      await interaction.reply({ content: `既に登録されています: ${newThreadId}`, ephemeral: true });
+      return;
+    }
+    threadIds.push(newThreadId);
+    await interaction.reply({ content: `通知先スレッドを追加しました: ${newThreadId}` });
+  } else if (interaction.commandName === "delete-thread") {
+    const delThreadId = interaction.options.getString("thread_id");
+    if (!delThreadId) {
+      await interaction.reply({ content: "スレッドIDを入力してください", ephemeral: true });
+      return;
+    }
+    if (!threadIds.includes(delThreadId)) {
+      await interaction.reply({ content: `登録されていません: ${delThreadId}`, ephemeral: true });
+      return;
+    }
+    threadIds = threadIds.filter(id => id !== delThreadId);
+    await interaction.reply({ content: `通知先スレッドを削除しました: ${delThreadId}` });
   }
 });
 
