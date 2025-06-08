@@ -31,8 +31,10 @@ function setSchedule(cronExpr: string) {
     } catch (err) {
       console.error("スレッド取得・送信エラー", err);
     }
+  }, {
+    timezone: "Asia/Tokyo"
   });
-  console.log(`新しいスケジュールで通知を設定しました: ${cronExpr}`);
+  console.log(`新しいスケジュールで通知を設定しました: ${cronExpr} (Asia/Tokyo)`);
 }
 
 client.once("ready", () => {
